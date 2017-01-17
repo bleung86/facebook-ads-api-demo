@@ -1,104 +1,117 @@
-import os
-
+from facebookads import FacebookAdsApi
+from facebookads.objects import (
+    AdAccount,
+    CustomAudience,
+    Business,
+    Ad,
+    AdSet
+)
 from itertools import islice
-# from facebookads.api import FacebookAdsApi
-# from facebookads import objects
+
+import os
+import json
+import csv
 
 
 def main():
+    
+    this_dir = os.path.dirname(__file__)
+    config_filename = os.path.join(this_dir, 'config.json') 
+    
+    ### Setup dummy records
+    fileName = 'Test_Records.txt'
+    row_num = 2345678
+    payload = 10000
+    CustomAudience_name = 'Data Engineers'
+    CustomAudience_desc = 'Thie is a test'
+    
+    ### Setup session and api objects
+    config_file = open(config_filename)
+    config = json.load(config_file)
+    config_file.close()
+    
+    auth_info = (
+        config['app_id'],
+        config['app_secret'],
+        config['access_token'])
+    
+    session = FacebookAdsApi.init(*auth_info)
+    
+    ##Setup Custom Audience
+    my_account = AdAccount(config['act_id'])
+    audience = create_CustomAudience(my_account, CustomAudience_name, CustomAudience_desc)
+        
     print_header()
-    # facebook_api = facebook_session_init()
+    generate_testfile(fileName, row_num)
+    
+    user_lists = read_testfile(fileName, payload)
+    for user_list in user_lists:
+        '''
+        ## Need to refactor and add http exception handling
+        '''
+        audience.add_users(CustomAudience.Schema.email_hash, user_list)
+        print(FacebookAdsApi.get_num_requests_attempted(session))
+            
+    '''
+    # Old Codes
+    file = open(fileName, 'r')
+    with file as f:
+        while True:
+            user_list = list(islice(f, payload))
+            if not user_list:
+                break
+            audience.add_users(CustomAudience.Schema.email_hash, user_list)
+    file.close()  
+    '''
+def create_CustomAudience(my_account, name, description=None):
+    audience = CustomAudience(parent_id=my_account.get_id_assured())
+    audience.update({
+        CustomAudience.Field.name: name,
+        CustomAudience.Field.subtype: CustomAudience.Subtype.custom,
+    })
+    if description:
+        audience.update({CustomAudience.Field.description: description})
+    audience.remote_create()
+    print('Created custom audience id ' + audience[CustomAudience.Field.id])
+    return audience
 
-    file = get_text_file_from_user()
-    if not file:
-        print('Please check file path and try again.')
-        return
-
-    emails = read_emails_from_file(file)
-    for email in emails:
-        print(len(email))
-        # facebook_ads_api_call(email)
 
 
 def print_header():
-    print('------------------------------------------')
-    print('           DEMO FACEBOOK ADS!             ')
-    print('------------------------------------------')
+    print('---------------------------------------------------------')
+    print('           FACEBOOK MARKET CUSTOM AUDIENCE               ')
+    print('---------------------------------------------------------')
     print()
 
 
-def get_text_file_from_user():
-    """This function gets the file from the user and checks if it is valid
+def generate_testfile(fileName, row_num):
+    
+    f = open(fileName, 'wt')
+    try:
+        writer = csv.writer(f, lineterminator='\n')
+        for i in range(row_num):
+            ##writer.writerow( (chr(ord('a') + i), '08/%02d/07' % (i+1)) )
+            writer.writerow(('Test%d@email.com'% (i+1),))
+    finally:
+        f.close()
+        print ('Test File Created')
 
-    Returns:
-        str: Absolute path to file.
+def read_testfile(fileName, payload):
     """
-    file = input('What text file would you like to upload? ')
-    if not file or not file.strip():
-        return None
-    if not os.path.isfile(file):
-        return None
-
-    return os.path.abspath(file)
-
-
-def read_emails_from_file(file, n=10000):
-    """Generator to yield an arry of n lines from a file.
-
-    Args:
-        file (str): Path to file.
-        n (int): Number of lines to yield.
-    Returns:
-        Generator object
+    Generator to yield one line instead of storing all lines in memory.
     """
-    with open(file, 'rb') as file_in:
+    with open(fileName, 'r') as file_in:
         while True:
-            next_n_lines = list(islice(file_in, n))
-            if not next_n_lines:
+            user_list = list(islice(file_in, payload))
+            if not user_list:
                 break
-            yield next_n_lines
-
-
-def facebook_session_init():
-    # Place import keys in an ENVIRONMENT VARIABLES and out of source control.
-    try:
-        my_app_id = os.environ['APP_ID']
-    except KeyError:
-        print('Please set envrionment variable APP_ID')
-
-    try:
-        my_app_secret = os.environ['APP_SECRET']
-    except KeyError:
-        print('Please set envrionment variable APP_SECRET')
-
-    try:
-        my_access_token_1 = os.environ['ACCESS_TOKEN']
-    except KeyError:
-        print('Please set envrionment variable ACCESS_TOKEN')
-
-    try:
-        proxies = {
-            'http': os.environ['HTTP_PROXY'],
-            'https': os.environ['HTTPS_PROXY']
-        }
-    except KeyError:
-        print('Please set envrionment variable HTTP_PROXY and HTTPS_PROXY')
-
-    session = FacebookSession(
-        my_app_id,
-        my_app_secret,
-        my_access_token,
-        proxies
-    )
-
-    return FacebookAdsApi(session)
-
+            yield user_list       
+    file_in.close() 
 
 def facebook_ads_api_call():
     """ Facebook API functionality goes here.
     """
     pass
-
 
 if __name__ == '__main__':
     main()
