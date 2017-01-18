@@ -1,16 +1,18 @@
 from facebookads import FacebookAdsApi
+from facebookads.exceptions import FacebookRequestError
 from facebookads.objects import (
     AdAccount,
     CustomAudience,
-    Business,
-    Ad,
-    AdSet
+ ##   Business,
+ ##   Ad,
+ ##   AdSet
 )
 from itertools import islice
 
 import os
 import json
 import csv
+import sys
 
 
 def main():
@@ -18,10 +20,15 @@ def main():
     this_dir = os.path.dirname(__file__)
     config_filename = os.path.join(this_dir, 'config.json') 
     
-    ### Setup dummy records
-    fileName = 'Test_Records.txt'
-    row_num = 2345678
+    #Facebook API max payload per http request - only 10,000 users could be uploaded at a time to a custom audience
     payload = 10000
+    
+    ### Setup dummy records - needs to be refactored once the custom audience and user list input logic are defined
+    fileName = 'Test_Records.txt'
+    row_num = 56789
+    generate_testfile(fileName, row_num)
+    
+    ### Setup dummy Custom Audience
     CustomAudience_name = 'Data Engineers'
     CustomAudience_desc = 'Thie is a test'
     
@@ -29,45 +36,66 @@ def main():
     config_file = open(config_filename)
     config = json.load(config_file)
     config_file.close()
-    
     auth_info = (
         config['app_id'],
         config['app_secret'],
         config['access_token'])
-    
     session = FacebookAdsApi.init(*auth_info)
     
-    ##Setup Custom Audience
+    ## Setup Custom Audience
     my_account = AdAccount(config['act_id'])
     audience = create_CustomAudience(my_account, CustomAudience_name, CustomAudience_desc)
-        
-    print_header()
-    generate_testfile(fileName, row_num)
     
-    user_lists = read_testfile(fileName, payload)
-    for user_list in user_lists:
-        '''
-        ## Need to refactor and add http exception handling
-        '''
-        audience.add_users(CustomAudience.Schema.email_hash, user_list)
-        print(FacebookAdsApi.get_num_requests_attempted(session))
-            
-    '''
-    # Old Codes
-    file = open(fileName, 'r')
-    with file as f:
-        while True:
-            user_list = list(islice(f, payload))
-            if not user_list:
-                break
-            audience.add_users(CustomAudience.Schema.email_hash, user_list)
-    file.close()  
-    '''
+    ## Print Header
+    print_header()
+   
+    ## Data Validation Variables 
+    num_lines = sum(1 for line in open(fileName))
+    user_list_total = 0
+    num_received = 0
+    
+    ## API Push
+    user_list = read_testfile(fileName, payload)
+    for users in user_list:
+        try:
+            user_list_total += len(users)
+            r = load_CustomAudience(audience, users)
+            dataset = json.loads(r._body)
+            num_received += dataset['num_received']
+            if(session.get_num_requests_attempted() != session.get_num_requests_succeeded()):
+                print('One of the requests failed')
+                print('Requests Attempted : ')
+                print(session.get_num_requests_attempted())
+                print('Requests Succeeded : ')
+                print(session.get_num_requests_succeeded())
+                sys.exit("Load Failed")
+                delete_CustomAudience(audience.get_id())
+        except FacebookRequestError as error:
+                print('HTTP Status : ')
+                print(error.http_status())
+                print('Error Code : ')
+                print(error.api_error_code())
+                print('Error Message : ')
+                print(error.api_error_message())
+                sys.exit("Load Failed")
+                delete_CustomAudience(audience.get_id())
+                
+    ## Data Validation
+    if (num_received != num_lines):
+        print('Load Failed - Records Missing')
+        delete_CustomAudience(audience.get_id())
+    print('----------------------')
+    print ('Total Records Listed : ')
+    print (num_lines)
+    print ('Total Records Loaded : ')
+    print (num_received)
+    print ('Custom Audience Upload Complete')
+    
 def create_CustomAudience(my_account, name, description=None):
     audience = CustomAudience(parent_id=my_account.get_id_assured())
     audience.update({
         CustomAudience.Field.name: name,
-        CustomAudience.Field.subtype: CustomAudience.Subtype.custom,
+        CustomAudience.Field.subtype: CustomAudience.Subtype.custom
     })
     if description:
         audience.update({CustomAudience.Field.description: description})
@@ -75,7 +103,25 @@ def create_CustomAudience(my_account, name, description=None):
     print('Created custom audience id ' + audience[CustomAudience.Field.id])
     return audience
 
-
+def load_CustomAudience(audience, users, datatype='email', schema=None, app_ids=None):
+    if datatype == 'email':
+        schema = CustomAudience.Schema.email_hash
+    elif datatype == 'phone':
+        schema = CustomAudience.Schema.phone_hash
+    elif datatype == 'mobile_id':
+        schema = CustomAudience.Schema.mobile_advertiser_id
+    elif datatype == 'uid':
+        schema = CustomAudience.Schema.uid
+    else:
+        sys.exit("[ERROR] invalid datatype " + datatype)
+    r = audience.add_users(schema, users)
+    print('Adding users to audience using ' + str(schema))
+    return r
+    
+def delete_CustomAudience(audience_id):
+    audience = CustomAudience(audience_id)
+    print('Deleting audience id ' + audience[CustomAudience.Field.id])
+    return audience.remote_delete()
 
 def print_header():
     print('---------------------------------------------------------')
@@ -83,14 +129,12 @@ def print_header():
     print('---------------------------------------------------------')
     print()
 
-
 def generate_testfile(fileName, row_num):
     
     f = open(fileName, 'wt')
     try:
         writer = csv.writer(f, lineterminator='\n')
         for i in range(row_num):
-            ##writer.writerow( (chr(ord('a') + i), '08/%02d/07' % (i+1)) )
             writer.writerow(('Test%d@email.com'% (i+1),))
     finally:
         f.close()
@@ -98,7 +142,7 @@ def generate_testfile(fileName, row_num):
 
 def read_testfile(fileName, payload):
     """
-    Generator to yield one line instead of storing all lines in memory.
+    Generator to yield a list of specified number of elements (payload) instead of storing the entire list in memory.
     """
     with open(fileName, 'r') as file_in:
         while True:
@@ -107,11 +151,6 @@ def read_testfile(fileName, payload):
                 break
             yield user_list       
     file_in.close() 
-
-def facebook_ads_api_call():
-    """ Facebook API functionality goes here.
-    """
-    pass
 
 if __name__ == '__main__':
     main()
