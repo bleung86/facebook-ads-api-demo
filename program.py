@@ -17,6 +17,9 @@ import sys
 
 def main():
     
+    ## Print Header
+    print_header()
+    
     this_dir = os.path.dirname(__file__)
     config_filename = os.path.join(this_dir, 'config.json') 
     
@@ -45,10 +48,7 @@ def main():
     ## Setup Custom Audience
     my_account = AdAccount(config['act_id'])
     audience = create_CustomAudience(my_account, CustomAudience_name, CustomAudience_desc)
-    
-    ## Print Header
-    print_header()
-   
+       
     ## Data Validation Variables 
     num_lines = sum(1 for line in open(fileName))
     user_list_total = 0
@@ -68,8 +68,8 @@ def main():
                 print(session.get_num_requests_attempted())
                 print('Requests Succeeded : ')
                 print(session.get_num_requests_succeeded())
-                sys.exit("Load Failed")
                 delete_CustomAudience(audience.get_id())
+                sys.exit("Load Failed")
         except FacebookRequestError as error:
                 print('HTTP Status : ')
                 print(error.http_status())
@@ -77,13 +77,13 @@ def main():
                 print(error.api_error_code())
                 print('Error Message : ')
                 print(error.api_error_message())
-                sys.exit("Load Failed")
                 delete_CustomAudience(audience.get_id())
+                sys.exit("Load Failed")
                 
     ## Data Validation
     if (num_received != num_lines):
-        print('Load Failed - Records Missing')
         delete_CustomAudience(audience.get_id())
+        sys.exit("Load Failed - Records Missing")
     print('----------------------')
     print ('Total Records Listed : ')
     print (num_lines)
