@@ -29,7 +29,7 @@ def main():
     ### Setup dummy records - needs to be refactored once the custom audience and user list input logic are defined
     fileName = 'Test_Records.txt'
     row_num = 56789
-    generate_testfile(fileName, row_num)
+    generate_test_file(fileName, row_num)
     
     ### Setup dummy Custom Audience
     CustomAudience_name = 'Data Engineers'
@@ -47,7 +47,7 @@ def main():
     
     ## Setup Custom Audience
     my_account = AdAccount(config['act_id'])
-    audience = create_CustomAudience(my_account, CustomAudience_name, CustomAudience_desc)
+    audience = create_custom_audience(my_account, CustomAudience_name, CustomAudience_desc)
        
     ## Data Validation Variables 
     num_lines = sum(1 for line in open(fileName))
@@ -55,11 +55,11 @@ def main():
     num_received = 0
     
     ## API Push
-    user_list = read_testfile(fileName, payload)
+    user_list = read_test_file(fileName, payload)
     for users in user_list:
         try:
             user_list_total += len(users)
-            r = load_CustomAudience(audience, users)
+            r = load_custom_audience(audience, users)
             dataset = json.loads(r._body)
             num_received += dataset['num_received']
             if(session.get_num_requests_attempted() != session.get_num_requests_succeeded()):
@@ -68,7 +68,7 @@ def main():
                 print(session.get_num_requests_attempted())
                 print('Requests Succeeded : ')
                 print(session.get_num_requests_succeeded())
-                delete_CustomAudience(audience.get_id())
+                delete_custom_audience(audience.get_id())
                 sys.exit("Load Failed")
         except FacebookRequestError as error:
                 print('HTTP Status : ')
@@ -77,12 +77,12 @@ def main():
                 print(error.api_error_code())
                 print('Error Message : ')
                 print(error.api_error_message())
-                delete_CustomAudience(audience.get_id())
+                delete_custom_audience(audience.get_id())
                 sys.exit("Load Failed")
                 
     ## Data Validation
     if (num_received != num_lines):
-        delete_CustomAudience(audience.get_id())
+        delete_custom_audience(audience.get_id())
         sys.exit("Load Failed - Records Missing")
     print('----------------------')
     print ('Total Records Listed : ')
@@ -91,7 +91,7 @@ def main():
     print (num_received)
     print ('Custom Audience Upload Complete')
     
-def create_CustomAudience(my_account, name, description=None):
+def create_custom_audience(my_account, name, description=None):
     audience = CustomAudience(parent_id=my_account.get_id_assured())
     audience.update({
         CustomAudience.Field.name: name,
@@ -103,7 +103,7 @@ def create_CustomAudience(my_account, name, description=None):
     print('Created custom audience id ' + audience[CustomAudience.Field.id])
     return audience
 
-def load_CustomAudience(audience, users, datatype='email', schema=None, app_ids=None):
+def load_custom_audience(audience, users, datatype='email', schema=None, app_ids=None):
     if datatype == 'email':
         schema = CustomAudience.Schema.email_hash
     elif datatype == 'phone':
@@ -118,7 +118,7 @@ def load_CustomAudience(audience, users, datatype='email', schema=None, app_ids=
     print('Adding users to audience using ' + str(schema))
     return r
     
-def delete_CustomAudience(audience_id):
+def delete_custom_audience(audience_id):
     audience = CustomAudience(audience_id)
     print('Deleting audience id ' + audience[CustomAudience.Field.id])
     return audience.remote_delete()
@@ -129,18 +129,16 @@ def print_header():
     print('---------------------------------------------------------')
     print()
 
-def generate_testfile(fileName, row_num):
+def generate_test_file(fileName, row_num):
     
     f = open(fileName, 'wt')
-    try:
-        writer = csv.writer(f, lineterminator='\n')
-        for i in range(row_num):
-            writer.writerow(('Test%d@email.com'% (i+1),))
-    finally:
-        f.close()
-        print ('Test File Created')
+    writer = csv.writer(f, lineterminator='\n')
+    for i in range(row_num):
+        writer.writerow(('Test%d@email.com'% (i+1),))
+    f.close()
+    print ('Test File Created')
 
-def read_testfile(fileName, payload):
+def read_test_file(fileName, payload):
     """
     Generator to yield a list of specified number of elements (payload) instead of storing the entire list in memory.
     """
@@ -149,8 +147,7 @@ def read_testfile(fileName, payload):
             user_list = list(islice(file_in, payload))
             if not user_list:
                 break
-            yield user_list       
-    file_in.close() 
+            yield user_list
 
 if __name__ == '__main__':
     main()
